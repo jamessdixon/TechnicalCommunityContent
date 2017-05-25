@@ -394,9 +394,9 @@ To flag potentially fraudulent withdrawals from ATMs, you will query for transac
 	Enter the following query and click **Test** to execute it:
 
 	```sql
-	SELECT W1.CardNumber as [Card Number],
-	    W1.DeviceID as [ATM 1], W2.DeviceID as [ATM 2],
-	    W1.TransactionTime as [Time 1], W2.TransactionTime as [Time 2]
+	SELECT W1.CardNumber as [CardNumber],
+	    W1.DeviceID as [ATM1], W2.DeviceID as [ATM2],
+	    W1.TransactionTime as [Time1], W2.TransactionTime as [Time2]
 	FROM Withdrawals W1 TIMESTAMP BY TransactionTime
 	JOIN Withdrawals W2 TIMESTAMP BY TransactionTime
 	ON W1.CardNumber = W2.CardNumber
@@ -538,9 +538,9 @@ In this exercise, you will use Visual Studio to write an ASP.NET MVC Web app tha
 
     _Copying the access key_
 
-1. Start a new instance of Visual Studio 2015 and use the **File -> New -> Project** command to create a new ASP.NET Web Application named "ATMDashboard."
+1. Start a new instance of Visual Studio 2015 and use the **File -> New -> Project** command to create a new ASP.NET Web Application named "ATMDashboard.UX."
 
-    ![Creating a new Web app](Images/mvc-new-web-application.png)
+    ![Creating a new Web app](Images/mvc-new-web-application-1.jpg)
 
     _Creating a new Web app_
 
@@ -549,6 +549,26 @@ In this exercise, you will use Visual Studio to write an ASP.NET MVC Web app tha
     ![Specifying parameters for the Web app](Images/mvc-new-web-application-2.png)
 
     _Specifying parameters for the Web app_
+
+1. In the Solution Explorer window, right-click **File -> New -> Project** command to create a new FSharp Library Project named "ATMDashboard"
+
+    ![Creating a new Library app](Images/mvc-new-library-application-1.jpg)
+
+    _Creating a new Library app 1_
+
+    ![Creating a new Library app](Images/mvc-new-library-application-2.jpg)
+
+    _Creating a new Library app 2_
+
+1. In the Solution Explorer window, right-click the **ATMDashboard.UX** project and select **Add Reference...** and Select the **ATMDashboard** project.
+
+    ![Referencing a Library app](Images/mvc-reference-library-application-1.jpg)
+
+    _Referencing a Library app 1_
+
+    ![Referencing a Library app](Images/mvc-reference-library-application-2.jpg)
+
+    _Referencing a Library app 2_
 
 1. In the Solution Explorer window, right-click the **ATMDashboard** project and select **Manage NuGet Packages...**
 
@@ -562,134 +582,86 @@ In this exercise, you will use Visual Studio to write an ASP.NET MVC Web app tha
 
     _Installing EventProcessorHost_
 
-1. Right-click the project in the Solution Explorer window and use the **Add -> Class** command to add a class file named **ATMEvent.cs** to the project.
+1. Right-click the library project in the Solution Explorer window and Select the Library1 file and rename it to **ATMEvents.fs**.
 
-    ![Adding the ATMEvent class](Images/mvc-add-atmevent-class.png)
+    ![Adding the ATMEvent class](Images/mvc-rename-event-file.jpg)
 
-    _Adding the ATMEvent class_
+    _Rename Events File_
 
-1. Add the following ```using``` statement at the top of the file:
+1. Add the following ```namespace``` and ```open``` statements at the top of the file:
 
-	```C#
-	using Newtonsoft.Json;
+	```F#
+	namespace ATMDashboard
+
+	open System
+	open System.Text
+	open Newtonsoft.Json
+	open System.Diagnostics
+	open System.Threading.Tasks
+	open System.Collections.Generic
+	open Microsoft.ServiceBus.Messaging
 	```
 
-1. Implement the ```ATMEvent``` class as follows:
+1. Implement the ```ATMEvent``` record type as follows:
 
-	```C#
-	public class ATMEvent
-	{
-	    [JsonProperty(PropertyName = "card number")]
-	    public string CardNumber { get; set; }
-	    [JsonProperty(PropertyName = "atm 1")]
-	    public string ATM1 { get; set; }
-	    [JsonProperty(PropertyName = "atm 2")]
-	    public string ATM2 { get; set; }
-	    [JsonProperty(PropertyName = "time 1")]
-	    public string TransactionTime1 { get; set; }
-	    [JsonProperty(PropertyName = "time 2")]
-	    public string TransactionTime2 { get; set; }
-	}
+	```F#
+	type ATMEvent = {
+    	CardNumber:string;
+    	ATM1:string;ATM2:string;
+    	Time1:string;Time2:string}
 	```
 
-1. Right-click the project in the Solution Explorer window and use the **Add -> Class** command to add a class file named **ATMEventAggregator.cs** to the project.
+1. Below the ATMEvent type, add the ATMEventAggregator implementation:
 
-    ![Adding the ATMEventAggregator class](Images/mvc-add-atmeventaggregator-class.png)
-
-    _Adding the ATMEventAggregator class_
-
-1. Implement the ```ATMEventAggregator``` class as follows:
-
-	```C#
-    public static class ATMEventAggregator
-    {
-        private static List<ATMEvent> _events = new List<ATMEvent>();
-
-        public static void LogEvent(ATMEvent e)
-        {
-            if (_events.Count < 1024) // Avoid unconstrained memory growth
-            {
-                _events.Add(e);
-            }
-        }
-
-        public static ATMEvent[] GetLoggedEvents()
-        {
-            var events = _events.ToArray();
-            _events.Clear();
-            return events;
-        }
-    }
+	```F#
+	type ATMEventAggregator() =
+    	static member events = List<ATMEvent>()
+    	static member LogEvent(event) =
+        	match ATMEventAggregator.events.Count < 1024 with
+        	| true -> ATMEventAggregator.events.Add(event)
+        	| false -> ()
+    	static member GetLoggedEvents() =
+        	let eventArray = ATMEventAggregator.events.ToArray()
+        	ATMEventAggregator.events.Clear()
+        	eventArray
 	```
 
-1. Right-click the project in the Solution Explorer window and use the **Add -> Class** command to add a class file named **SimpleEventProcessor.cs** to the project.
+1. Below the ATMEventAggregator type, add the SimpleEventProcessor implementation:
 
-    ![Adding the SimpleEventProcessor class](Images/mvc-add-simpleventprocessor-class.png)
-
-    _Adding the SimpleEventProcessor class_
-
-1. Add the following ```using``` statements to the ones at the top of the file:
-
-	```C#
-	using Microsoft.ServiceBus.Messaging;
-	using System.Diagnostics;
-	using System.Threading.Tasks;
-	using Newtonsoft.Json;
-	using System.Text;
+	```F#
+	type SimpleEventProcessor() =
+    	let checkpointStopWatch = new Stopwatch()
+    		interface IEventProcessor with
+        	member this.CloseAsync(context, reason) = 
+            		Debug.WriteLine("Processor Shutting Down. Partition '{0}', Reason: '{1}'.", context.Lease.PartitionId, reason)
+            		match reason with 
+            		| CloseReason.Shutdown -> context.CheckpointAsync() 
+            		| _ -> Task.CompletedTask   
+        	member this.OpenAsync(context) =
+            		Debug.WriteLine("SimpleEventProcessor initialized.  Partition: '{0}', Offset: '{1}'", context.Lease.PartitionId, context.Lease.Offset)
+            		checkpointStopWatch.Start()
+            		Task.CompletedTask
+        	member this.ProcessEventsAsync(context, messages) =
+            		messages
+            		|> Seq.map(fun ed -> Encoding.UTF8.GetString(ed.GetBytes()))
+            		|> Seq.map(fun b -> Debug.WriteLine(String.Format("Message received.  Partition: '{0}', Data: '{1}'", context.Lease.PartitionId, b)); b)
+            		|> Seq.map(fun b -> JsonConvert.DeserializeObject<ATMEvent>(b))
+            		|> Seq.iter(fun e -> ATMEventAggregator.LogEvent(e))
+            
+            		match checkpointStopWatch.Elapsed > TimeSpan.FromMinutes(5.0) with
+            		| true -> checkpointStopWatch.Restart()
+                      		context.CheckpointAsync()
+            		| false -> Task.CompletedTask
 	```
 
-1. Implement the ```SimpleEventProcessor``` class as follows:
-
-	```C#
-	class SimpleEventProcessor : IEventProcessor
-	{
-	    Stopwatch checkpointStopWatch;
-	
-	    async Task IEventProcessor.CloseAsync(PartitionContext context, CloseReason reason)
-	    {
-	        Debug.WriteLine("Processor Shutting Down. Partition '{0}', Reason: '{1}'.", context.Lease.PartitionId, reason);
-	        if (reason == CloseReason.Shutdown)
-	        {
-	            await context.CheckpointAsync();
-	        }
-	    }
-	
-	    Task IEventProcessor.OpenAsync(PartitionContext context)
-	    {
-	        Debug.WriteLine("SimpleEventProcessor initialized.  Partition: '{0}', Offset: '{1}'", context.Lease.PartitionId, context.Lease.Offset);
-	        this.checkpointStopWatch = new Stopwatch();
-	        this.checkpointStopWatch.Start();
-	        return Task.FromResult<object>(null);
-	    }
-	
-	    async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> messages)
-	    {
-	        foreach (EventData eventData in messages)
-	        {
-	            string data = Encoding.UTF8.GetString(eventData.GetBytes());
-	
-	            Debug.WriteLine(string.Format("Message received.  Partition: '{0}', Data: '{1}'",
-	                context.Lease.PartitionId, data));
-	
-	            // Log the event
-	            ATMEvent e = JsonConvert.DeserializeObject<ATMEvent>(data);
-	            ATMEventAggregator.LogEvent(e);
-	        }
-	
-	        if (this.checkpointStopWatch.Elapsed > TimeSpan.FromMinutes(5))
-	        {
-	            await context.CheckpointAsync();
-	            this.checkpointStopWatch.Restart();
-	        }
-	    }
-	}
-	```
+1. Compile the ATMEvents project and open the ATMEvents.UX project:
 
 1. Open **Global.asax.cs** and add the following ```using``` statements:
 
 	```C#
 	using Microsoft.ServiceBus.Messaging;
 	using System.Diagnostics;
+	using ATMEvents;
 	```
 
 1. In **Global.asax.cs**, add the following statements to the end of the ```Application_Start``` method:
@@ -779,7 +751,7 @@ In this exercise, you will use Visual Studio to write an ASP.NET MVC Web app tha
 	                url: "/api/events",
 	                success: function (result) {
 	                    for (i = 0; i < result.length; i++) {
-	                        $("#output tr:last").after("<tr><td>" + result[i]["card number"] + "</td><td>" + result[i]["atm 1"] + "</td><td>" + result[i]["atm 2"] + "</td></tr>");
+	                        $("#output tr:last").after("<tr><td>" + result[i]["cardnumber"] + "</td><td>" + result[i]["atm1"] + "</td><td>" + result[i]["atm2"] + "</td></tr>");
 	                    }
 	                },
 	                error: function (xhr, status, error) {
